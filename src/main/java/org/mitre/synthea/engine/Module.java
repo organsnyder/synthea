@@ -1,16 +1,14 @@
 package org.mitre.synthea.engine;
 
+import com.google.common.reflect.ClassPath;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.stream.JsonReader;
 
-import java.io.File;
-import java.io.FileReader;
+import java.io.*;
 import java.net.URL;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -20,13 +18,17 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
+import org.apache.commons.lang3.ClassPathUtils;
 import org.mitre.synthea.modules.CardiovascularDiseaseModule;
 import org.mitre.synthea.modules.EncounterModule;
 import org.mitre.synthea.modules.HealthInsuranceModule;
 import org.mitre.synthea.modules.LifecycleModule;
 import org.mitre.synthea.modules.QualityOfLifeModule;
 import org.mitre.synthea.world.agents.Person;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 
 /**
  * Module represents the entry point of a generic module.
@@ -48,20 +50,15 @@ public class Module {
     retVal.put("Quality Of Life", new QualityOfLifeModule());
     retVal.put("Health Insurance", new HealthInsuranceModule());
 
+    PathMatchingResourcePatternResolver resolver = new PathMatchingResourcePatternResolver();
     try {
-      URL modulesFolder = ClassLoader.getSystemClassLoader().getResource("modules");
-      Path path = Paths.get(modulesFolder.toURI());
-      Files.walk(path, Integer.MAX_VALUE).filter(Files::isReadable).filter(Files::isRegularFile)
-          .filter(p -> p.toString().endsWith(".json")).forEach(t -> {
-            try {
-              Module module = loadFile(t, path);
-              String relativePath = relativePath(t, path);
-              retVal.put(relativePath, module);
-            } catch (Exception e) {
-              e.printStackTrace();
-              throw new RuntimeException(e);
-            }
-          });
+        Resource[] resources = resolver.getResources("/modules/**/*.json");
+        Resource modulesDir = resolver.getResource("/modules");
+        for (Resource resource : resources) {
+            Module module = loadResource(resource, modulesDir);
+            String relativePath = relativePath(resource, modulesDir);
+            retVal.put(relativePath, module);
+        }
     } catch (Exception e) {
       e.printStackTrace();
     }
@@ -71,25 +68,29 @@ public class Module {
     return retVal;
   }
 
-  private static String relativePath(Path filePath, Path modulesFolder) {
-    String folderString = Matcher.quoteReplacement(modulesFolder.toString() + File.separator);
-    return filePath.toString().replaceFirst(folderString, "").replaceFirst(".json", "")
-        .replace("\\", "/");
+  private static String relativePath(Resource file, Resource modulesDir) {
+    try {
+      Pattern p = Pattern.compile("^" + Pattern.quote(modulesDir.getURL().toExternalForm()) + "/(?<relativePath>.+)\\.json$");
+      Matcher m = p.matcher(file.getURL().toExternalForm());
+      if (!m.matches()) {
+        throw new RuntimeException("Path matcher didn't match"); // this should only happen if there's a bug in the above regex
+      }
+      return m.group("relativePath");
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
   }
 
-  public static Module loadFile(Path path, Path modulesFolder) throws Exception {
-    System.out.format("Loading %s\n", path.toString());
-    boolean submodule = !path.getParent().equals(modulesFolder);
-    JsonObject object = null;
-    FileReader fileReader = null;
-    JsonReader reader = null;
-    fileReader = new FileReader(path.toString());
-    reader = new JsonReader(fileReader);
-    JsonParser parser = new JsonParser();
-    object = parser.parse(reader).getAsJsonObject();
-    fileReader.close();
-    reader.close();
-    return new Module(object, submodule);
+  public static Module loadResource(Resource resource, Resource modulesDir) throws Exception {
+    System.out.format("Loading %s\n", resource.getDescription());
+    boolean submodule = resource.createRelative(".").equals(modulesDir);
+    try(
+        JsonReader reader = new JsonReader(new InputStreamReader(resource.getInputStream()))
+    ) {
+        JsonParser parser = new JsonParser();
+        JsonObject object = parser.parse(reader).getAsJsonObject();
+      return new Module(object, submodule);
+    }
   }
 
   public static String[] getModuleNames() {

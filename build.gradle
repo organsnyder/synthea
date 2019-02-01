@@ -56,6 +56,8 @@ dependencies {
   compile group: 'org.yaml', name: 'snakeyaml', version: '1.19'
   compile group: 'org.apache.commons', name: 'commons-math3', version: '3.6.1'
   compile group: 'org.apache.commons', name: 'commons-text', version: '1.2'
+  // Needed for PathMatchingResourcePatternResolver
+  compile group: 'org.springframework', name: 'spring-core', version: '5.1.4.RELEASE'
 
   // Java 9 no longer includes these APIs by default
   compile group: 'javax.xml.bind', name: 'jaxb-api', version: '2.3.0'

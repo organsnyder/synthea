@@ -7,6 +7,8 @@ import java.time.ZoneOffset;
 
 import org.mitre.synthea.engine.Module;
 import org.mitre.synthea.helpers.Config;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 
 public abstract class TestHelper {
 
@@ -17,9 +19,10 @@ public abstract class TestHelper {
    * @throws Exception On errors.
    */
   public static Module getFixture(String filename) throws Exception {
-    Path modulesFolder = Paths.get("src/test/resources/generic");
-    Path module = modulesFolder.resolve(filename);
-    return Module.loadFile(module, modulesFolder);
+    PathMatchingResourcePatternResolver resolver = new PathMatchingResourcePatternResolver();
+    Resource modulesDir = resolver.getResource("/generic");
+    Resource module = modulesDir.createRelative(filename);
+    return Module.loadResource(module, modulesDir);
   }
 
   /**
